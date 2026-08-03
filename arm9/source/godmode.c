@@ -151,7 +151,8 @@ u32 SplashInit(const char* modestr) {
 
     DrawStringF(BOT_SCREEN, pos_xb, pos_yb, COLOR_STD_FONT, COLOR_STD_BG, "%s\n%*.*s\n%s\n \n \n%s\n%s\n \n%s\n%s",
         namestr, strlen(namestr), strlen(namestr),
-        "--------------------------------", "https://github.com/git-effl/GodMode9",
+        "--------------------------------", "https://github.com/git-effl/GodMode9"),
+		
     DrawStringF(BOT_SCREEN, pos_xu, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "%s", loadstr);
     DrawStringF(BOT_SCREEN, pos_xb, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "built: " DBUILTL);
 
