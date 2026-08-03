@@ -126,7 +126,7 @@ u32 BootFirmHandler(const char* bootpath, bool verbose, bool delete) {
 u32 SplashInit(const char* modestr) {
     u64 splash_size;
     u8* splash = FindVTarFileInfo(VRAM0_SPLASH_PNG, &splash_size);
-    const char* namestr = FLAVOR " " VERSION;
+    const char* namestr = 3DSXplorer Powered by GodMode9
     const char* loadstr = "booting...";
     const u32 pos_xb = 10;
     const u32 pos_yb = 10;
@@ -151,9 +151,7 @@ u32 SplashInit(const char* modestr) {
 
     DrawStringF(BOT_SCREEN, pos_xb, pos_yb, COLOR_STD_FONT, COLOR_STD_BG, "%s\n%*.*s\n%s\n \n \n%s\n%s\n \n%s\n%s",
         namestr, strlen(namestr), strlen(namestr),
-        "--------------------------------", "https://github.com/d0k3/GodMode9",
-        "Releases:", "https://github.com/d0k3/GodMode9/releases/", // this won't fit with a 8px width font
-        "Hourlies:", "https://d0k3.secretalgorithm.com/");
+        "--------------------------------", "https://github.com/git-effl/GodMode9",
     DrawStringF(BOT_SCREEN, pos_xu, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "%s", loadstr);
     DrawStringF(BOT_SCREEN, pos_xb, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "built: " DBUILTL);
 
