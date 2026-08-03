@@ -126,7 +126,7 @@ u32 BootFirmHandler(const char* bootpath, bool verbose, bool delete) {
 u32 SplashInit(const char* modestr) {
     u64 splash_size;
     u8* splash = FindVTarFileInfo(VRAM0_SPLASH_PNG, &splash_size);
-    const char* namestr = "3DSXplorer Powered by GodMode9";
+    const char* namestr = "3DSXplorer";
     const char* loadstr = "booting...";
     const u32 pos_xb = 10;
     const u32 pos_yb = 10;
@@ -149,10 +149,11 @@ u32 SplashInit(const char* modestr) {
     if (modestr) DrawStringF(TOP_SCREEN, SCREEN_WIDTH_TOP - 10 - GetDrawStringWidth(modestr),
         SCREEN_HEIGHT - 10 - GetDrawStringHeight(modestr), COLOR_STD_FONT, COLOR_TRANSPARENT, "%s", modestr);
 
-    DrawStringF(BOT_SCREEN, pos_xb, pos_yb, COLOR_STD_FONT, COLOR_STD_BG, "%s\n%s\n%s",
-        namestr, strlen(namestr), strlen(namestr),
-        "--------------------------------", "https://github.com/git-effl/3DSXplorer");
-		
+    // Clean individual print calls with no stack-breaking arguments
+    DrawStringF(BOT_SCREEN, pos_xb, pos_yb, COLOR_STD_FONT, COLOR_STD_BG, "%s", namestr);
+    DrawStringF(BOT_SCREEN, pos_xb, pos_yb + 12, COLOR_STD_FONT, COLOR_STD_BG, "--------------------------------");
+    DrawStringF(BOT_SCREEN, pos_xb, pos_yb + 24, COLOR_STD_FONT, COLOR_STD_BG, "https://github.com/git-eff1/3DSXplorer");
+
     DrawStringF(BOT_SCREEN, pos_xu, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "%s", loadstr);
     DrawStringF(BOT_SCREEN, pos_xb, pos_yu, COLOR_STD_FONT, COLOR_STD_BG, "built: " DBUILTL);
 
