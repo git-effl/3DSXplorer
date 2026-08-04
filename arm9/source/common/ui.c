@@ -89,6 +89,7 @@ static const u16 cp437_escapes[0x20] = {
 
 #define PIXEL_OFFSET(x, y)  (((x) * SCREEN_HEIGHT) + (SCREEN_HEIGHT - (y) - 1))
 
+
 u16 GetFontIndex(u16 c, bool use_ascii_lut)
 {
     if (c < 0x20) return GetFontIndex(cp437_escapes[c], use_ascii_lut);
@@ -112,6 +113,7 @@ u16 GetFontIndex(u16 c, bool use_ascii_lut)
     return ascii_lut['?' - 0x20];
 }
 
+// gets a u32 codepoint from a UTF-8 string and moves the pointer to the next character
 u32 GetCharacter(const char** str)
 {
     u32 c;
@@ -131,6 +133,7 @@ u32 GetCharacter(const char** str)
         c |= (*(*str)++ & 0x3F) << 6;
         c |=  *(*str)++ & 0x3F;
     } else {
+        // invalid UTF-8, skip to next character
         (*str)++;
         c = '?';
     }
@@ -144,9 +147,13 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
     u32 pbm_w = 0;
     u32 pbm_h = 0;
 
+    // minimum size
     if (hdr_max_size < 7) return NULL;
+
+    // check header magic, then skip over
     if (strncmp(hdr, "P4\n", 3) != 0) return NULL;
 
+    // skip any comments
     u32 p = 3;
     while (hdr[p] == '#') {
         while (hdr[p++] != '\n') {
@@ -154,30 +161,35 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
         }
     }
 
+    // parse width
     while ((hdr[p] >= '0') && (hdr[p] <= '9')) {
         if (p >= hdr_max_size) return NULL;
         pbm_w *= 10;
         pbm_w += hdr[p++] - '0';
     }
 
+    // whitespace
     if ((hdr[p++] != ' ') || (p >= hdr_max_size))
         return NULL;
 
+    // parse height
     while ((hdr[p] >= '0') && (hdr[p] <= '9')) {
         if (p >= hdr_max_size) return NULL;
         pbm_h *= 10;
         pbm_h += hdr[p++] - '0';
     }
 
+    // line break
     if ((hdr[p++] != '\n') || (p >= hdr_max_size))
         return NULL;
 
-    if (pbm_w <= 8) { 
+    // check sizes
+    if (pbm_w <= 8) { // 1x256 format
         if ((pbm_w > FONT_MAX_WIDTH) || (pbm_h % 256) ||
             ((pbm_h / 256) > FONT_MAX_HEIGHT) ||
             (pbm_h != (pbm_size - p)))
             return NULL;
-    } else { 
+    } else { // 16x16 format
         if ((pbm_w % 16) || (pbm_h % 16) ||
             ((pbm_w / 16) > FONT_MAX_WIDTH) ||
             ((pbm_h / 16) > FONT_MAX_HEIGHT) ||
@@ -185,6 +197,7 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
             return NULL;
     }
 
+    // all good
     if (w) *w = pbm_w;
     if (h) *h = pbm_h;
     return (u8*) pbm + p;
@@ -195,9 +208,12 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     const RiffChunkHeader* riff_header;
     const RiffChunkHeader* chunk_header;
 
+    // check header magic and load size
     if (!ptr) return NULL;
     riff_header = ptr;
     if (memcmp(riff_header->chunk_id, "RIFF", 4) != 0) return NULL;
+
+    // ensure enough space is allocated
     if (riff_header->size > riff_size) return NULL;
 
     ptr += sizeof(RiffChunkHeader);
@@ -205,12 +221,15 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     while ((u32)(ptr - riff) < riff_header->size + sizeof(RiffChunkHeader)) {
         chunk_header = ptr;
 
+        // check for and load META section
         if (memcmp(chunk_header->chunk_id, "META", 4) == 0) {
+
             if (chunk_header->size != 4) return NULL;
 
             const FontMeta *meta = ptr + sizeof(RiffChunkHeader);
             if (meta->width > FONT_MAX_WIDTH || meta->height > FONT_MAX_HEIGHT) return NULL;
 
+            // all good
             if (w) *w = meta->width;
             if (h) *h = meta->height;
             if (count) *count = meta->count;
@@ -223,6 +242,8 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     return NULL;
 }
 
+// sets the font from a given RIFF or PBM
+// if no font is given, the font is fetched from the default VRAM0 location
 bool SetFont(const void* font, u32 font_size) {
     u32 w, h;
     u16 count;
@@ -237,7 +258,7 @@ bool SetFont(const void* font, u32 font_size) {
     if (!font)
         return false;
 
-    if ((ptr = GetFontFromRiff(font, font_size, &w, &h, &count))) { 
+    if ((ptr = GetFontFromRiff(font, font_size, &w, &h, &count))) { // RIFF font
         font_width = w;
         font_height = h;
         font_count = count;
@@ -245,21 +266,22 @@ bool SetFont(const void* font, u32 font_size) {
         const RiffChunkHeader* riff_header;
         const RiffChunkHeader* chunk_header;
 
+        // load total size
         riff_header = font;
 
         while (((u32)ptr - (u32)font) < riff_header->size + sizeof(RiffChunkHeader)) {
             chunk_header = (const void *)ptr;
 
-            if (memcmp(chunk_header->chunk_id, "CDAT", 4) == 0) { 
+            if (memcmp(chunk_header->chunk_id, "CDAT", 4) == 0) { // character data
                 if (font_bin) free(font_bin);
                 font_bin = malloc(font_height * font_count);
-                if (!font_bin) return false;
+                if (!font_bin) return NULL;
 
                 memcpy(font_bin, ptr + sizeof(RiffChunkHeader), font_height * font_count);
-            } else if (memcmp(chunk_header->chunk_id, "CMAP", 4) == 0) { 
+            } else if (memcmp(chunk_header->chunk_id, "CMAP", 4) == 0) { // character map
                 if (font_map) free(font_map);
                 font_map = malloc(sizeof(u16) * font_count);
-                if (!font_map) return false;
+                if (!font_map) return NULL;
 
                 memcpy(font_map, ptr + sizeof(RiffChunkHeader), sizeof(u16) * font_count);
             }
@@ -275,7 +297,7 @@ bool SetFont(const void* font, u32 font_size) {
 
             if (font_bin) free(font_bin);
             font_bin = malloc(font_height * font_count);
-            if (!font_bin) return false;
+            if (!font_bin) return NULL;
 
             for (u32 cy = 0; cy < 16; cy++) {
                 for (u32 row = 0; row < font_height; row++) {
@@ -297,13 +319,15 @@ bool SetFont(const void* font, u32 font_size) {
 
         if (font_map) free(font_map);
         font_map = malloc(sizeof(u16) * font_count);
-        if (!font_map) return false;
+        if (!font_map) return NULL;
 
         memcpy(font_map, cp437_sorted_map, sizeof(cp437_sorted_map));
     } else {
         return false;
     }
 
+
+    // set up ASCII lookup table
     ascii_lut['?' - 0x20] = GetFontIndex('?', false);
     for (int i = 0; i < 0x60; i++) {
         ascii_lut[i] = GetFontIndex(i + 0x20, false);
@@ -353,9 +377,11 @@ void DrawRectangle(u16 *screen, int x, int y, u32 width, u32 height, u32 color)
 
 void DrawBitmap(u16 *screen, int x, int y, u32 w, u32 h, const u16* bitmap)
 {
+    // on negative values: center the bitmap
     if (x < 0) x = (SCREEN_WIDTH(screen) - w) >> 1;
     if (y < 0) y = (SCREEN_HEIGHT - h) >> 1;
 
+    // bug out on too big bitmaps / too large dimensions
     if ((x < 0) || (y < 0) || (w > SCREEN_WIDTH(screen)) || (h > SCREEN_HEIGHT))
         return;
 
@@ -373,16 +399,19 @@ void DrawQrCode(u16 *screen, const u8* qrcode)
     u32 size_qr_s = size_qr;
     u32 size_canvas = size_qr + 8;
 
+    // handle scaling
     u32 scale = 1;
     for (; size_canvas * (scale+1) < SCREEN_HEIGHT; scale++);
     size_qr_s *= scale;
     size_canvas *= scale;
 
+    // clear screen, draw the canvas
     u32 x_canvas = (SCREEN_WIDTH(screen) - size_canvas) / 2;
     u32 y_canvas = (SCREEN_HEIGHT - size_canvas) / 2;
     ClearScreen(screen, COLOR_STD_BG);
     DrawRectangle(screen, x_canvas, y_canvas, size_canvas, size_canvas, COLOR_WHITE);
 
+    // draw the QR code
     u32 x_qr = (SCREEN_WIDTH(screen) - size_qr_s) / 2;
     u32 y_qr = (SCREEN_HEIGHT - size_qr_s) / 2;
     int xDisplacement = x_qr * SCREEN_HEIGHT;
@@ -534,6 +563,7 @@ void MultiLineString(char* dest, const char* orig, int llen, int maxl) {
         *(ptr_d++) = '\n';
     }
 
+    // string too long?
     if (!maxl) *dest = '\0';
     else if (*ptr_o) {
         if (llen >= 3) snprintf(ptr_d - 4, 4, "...");
@@ -546,13 +576,13 @@ void WordWrapString(char* str, int llen) {
     char* last_spc = str - 1;
     if (!llen) llen = (SCREEN_WIDTH_MAIN / font_width);
     for (char* str_ptr = str;; str_ptr++) {
-        if (!*str_ptr || (*str_ptr == ' ')) { 
-            if (str_ptr - last_brk > llen) { 
-                if (last_spc > last_brk) { 
+        if (!*str_ptr || (*str_ptr == ' ')) { // on space or string_end
+            if (str_ptr - last_brk > llen) { // if maximum line lenght is exceeded
+                if (last_spc > last_brk) { // put a line_brk at the last space
                     *last_spc = '\n';
                     last_brk = last_spc;
                     last_spc = str_ptr;
-                } else if (*str_ptr) { 
+                } else if (*str_ptr) { // if we have no applicable space
                     *str_ptr = '\n';
                     last_brk = str_ptr;
                 }
@@ -562,6 +592,7 @@ void WordWrapString(char* str, int llen) {
     }
 }
 
+// dest must be at least 4x the size of nlength to account for UTF-8
 void ResizeString(char* dest, const char* orig, int nlength, int tpos, bool align_right) {
     int olength = 0;
     for (int i = 0; i < 256 && orig[i]; i++) {
@@ -580,6 +611,7 @@ void ResizeString(char* dest, const char* orig, int nlength, int tpos, bool alig
     }
 }
 
+// dest must be at least 4x the size of nlength to account for UTF-8
 void TruncateString(char* dest, const char* orig, int nlength, int tpos) {
     int osize = strnlen(orig, 256), olength = 0;
     for (int i = 0; i < 256 && orig[i]; i++) {
@@ -607,7 +639,7 @@ void TruncateString(char* dest, const char* orig, int nlength, int tpos) {
     }
 }
 
-void FormatNumber(char* str, u64 number) { 
+void FormatNumber(char* str, u64 number) { // str should be 32 byte in size
     u64 mag1000 = 1;
     *str = '\0';
     for (; number / (mag1000 * 1000) > 0; mag1000 *= 1000);
@@ -617,7 +649,7 @@ void FormatNumber(char* str, u64 number) {
     }
 }
 
-void FormatBytes(char* str, u64 bytes, bool useLocale) { 
+void FormatBytes(char* str, u64 bytes, bool useLocale) { // str should be 32 byte in size, just to be safe
     static const char* normalizedUnits[] = {" Byte", " kB", " MB", " GB"};
     const char* localizedUnits[] = {STR_BYTE, STR_KB, STR_MB, STR_GB};
 
@@ -637,7 +669,7 @@ void FormatBytes(char* str, u64 bytes, bool useLocale) {
 void ShowStringF(u16* screen, const char *format, ...)
 {
     ClearScreen(MAIN_SCREEN, COLOR_STD_BG);
-    if (format && *format) { 
+    if (format && *format) { // only if there is something in there
         char str[STRBUF_SIZE];
         va_list va;
         va_start(va, format);
@@ -651,7 +683,7 @@ void ShowStringF(u16* screen, const char *format, ...)
 void ShowString(const char *format, ...)
 {
     ClearScreenF(true, false, COLOR_STD_BG);
-    if (format && *format) { 
+    if (format && *format) { // only if there is something in there
         char str[STRBUF_SIZE];
         va_list va;
         va_start(va, format);
@@ -669,7 +701,7 @@ void ShowIconStringF(u16* screen, u16* icon, int w, int h, const char *format, .
     u32 x_str, y_str, x_bmp, y_bmp;
 
     ClearScreen(screen, COLOR_STD_BG);
-    if (!format || !*format) return; 
+    if (!format || !*format) return; // only if there is something in there
 
     char str[STRBUF_SIZE];
     va_list va;
@@ -757,7 +789,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     x = (str_width >= SCREEN_WIDTH_MAIN) ? 0 : (SCREEN_WIDTH_MAIN - str_width) / 2;
     y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
 
-    if (seqlvl >= 5) { 
+    if (seqlvl >= 5) { // special handling
         color_bg = seqcolors[seqlvl];
         color_font = COLOR_BLACK;
         color_off = COLOR_BLACK;
@@ -769,7 +801,8 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     #ifndef TIMER_UNLOCK
     DrawStringF(MAIN_SCREEN, x, y + str_height - 28, color_font, color_bg, "%s", STR_TO_PROCEED_ENTER_THIS);
 
-    const char *dpad_symbols[] = { "RIGHT", "LEFT", "UP", "DOWN" }; 
+    // generate sequence
+    const char *dpad_symbols[] = { "→", "←", "↑", "↓" }; // R L U D
 
     u32 sequence[seqlen_max];
     const char *seqsymbols[seqlen_max];
@@ -783,6 +816,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     }
     sequence[seqlen-1] = BUTTON_A;
     seqsymbols[seqlen-1] = "A";
+
 
     while (true) {
         for (u32 n = 0; n < seqlen; n++) {
@@ -841,158 +875,70 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
     vsnprintf(str, STRBUF_SIZE, format, va);
     va_end(va);
 
-    if (n == 0) return 0;
+    if (n == 0) return 0; // check for low number of options
+    // else if (n == 1) return ShowPrompt(true, "%s\n%s?", str, options[0]) ? 1 : 0;
 
     str_width = GetDrawStringWidth(str);
     str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
     if (str_width < 24 * font_width) str_width = 24 * font_width;
-    for (int i = 0; i < n; i++) {
-        if (str_width < GetDrawStringWidth(options[i]) + (3 * font_width))
-            str_width = GetDrawStringWidth(options[i]) + (3 * font_width);
-    }
+    for (int i = 0; i < n; i++) if (str_width < GetDrawStringWidth(options[i]) + (3 * font_width))
+        str_width = GetDrawStringWidth(options[i]) + (3 * font_width);
     x = (str_width >= SCREEN_WIDTH_MAIN) ? 0 : (SCREEN_WIDTH_MAIN - str_width) / 2;
     y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
     yopt = y + GetDrawStringHeight(str) + 8;
 
     ClearScreenF(true, false, COLOR_STD_BG);
     DrawStringF(MAIN_SCREEN, x, y, COLOR_STD_FONT, COLOR_STD_BG, "%s", str);
-    DrawStringF(MAIN_SCREEN, x, yopt + (n_show * (line_height + 2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
-    
+    DrawStringF(MAIN_SCREEN, x, yopt + (n_show*(line_height+2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
     while (true) {
-        for (int i = scroll; i < scroll + n_show; i++) {
-            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height + 2) * (i - scroll)), 
-                        (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG, 
-                        "%2.2s %s", (sel == i) ? "->" : "", options[i]);
+        for (int i = scroll; i < scroll+n_show; i++) {
+            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height+2)*(i-scroll)), (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG, "%2.2s %s",
+                (sel == i) ? "->" : "", options[i]);
         }
 
+        // show [n more]
         if (n - n_show - scroll > 0) {
-            char more_str[UTF_BUFFER_BYTESIZE(str_width / font_width)];
-            char temp_str[UTF_BUFFER_BYTESIZE(64)];
-            snprintf(temp_str, sizeof(temp_str), STR_N_MORE, (n - (n_show - 1) - scroll));
+            char more_str[UTF_BUFFER_BYTESIZE(str_width / font_width)], temp_str[UTF_BUFFER_BYTESIZE(64)];
+            snprintf(temp_str, sizeof(temp_str), STR_N_MORE, (n - (n_show-1) - scroll));
             ResizeString(more_str, temp_str, str_width / font_width, 8, false);
-            DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height + 2) * (n_show - 1), COLOR_LIGHTGREY, COLOR_STD_BG);
+            DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height+2)*(n_show-1), COLOR_LIGHTGREY, COLOR_STD_BG);
         }
-
+        // show scroll bar
         u32 bar_x = x + str_width + 2;
         const u32 flist_height = (n_show * (line_height + 2));
         const u32 bar_width = 2;
-        if (n > n_show) { 
+        if (n > n_show) { // draw position bar at the right
             const u32 bar_height_min = 32;
             u32 bar_height = (n_show * flist_height) / n;
             if (bar_height < bar_height_min) bar_height = bar_height_min;
-            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show);
-            DrawRectangle(MAIN_SCREEN, bar_x, yopt + bar_y, bar_width, bar_height, COLOR_LIGHTGREY);
+            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show) + yopt;
+
+            DrawRectangle(MAIN_SCREEN, bar_x, bar_y, bar_width, bar_height, COLOR_SIDE_BAR);
         }
 
         u32 pad_state = InputWait(0);
-        if (pad_state & BUTTON_A) {
-            ClearScreenF(true, false, COLOR_STD_BG);
-            return sel + 1;
-        } else if (pad_state & BUTTON_B) {
-            ClearScreenF(true, false, COLOR_STD_BG);
-            return 0;
-        } else if (pad_state & BUTTON_UP) {
-            if (sel > 0) {
-                sel--;
-            } else {
-                sel = n - 1; 
-            }
-            if (sel < scroll) {
-                scroll = sel;
-            } else if (sel >= scroll + n_show) {
-                scroll = (n > n_show) ? (n - n_show) : 0;
-            }
-        } else if (pad_state & BUTTON_DOWN) {
-            if (sel < n - 1) {
-                sel++;
-            } else {
-                sel = 0; 
-            }
-            if (sel >= scroll + n_show) {
-                scroll = sel - n_show + 1;
-            } else if (sel < scroll) {
-                scroll = sel;
-            }
+        if (pad_state & BUTTON_DOWN) sel = (sel+1) % n;
+        else if (pad_state & BUTTON_UP) sel = (sel+n-1) % n;
+        else if (pad_state & BUTTON_RIGHT) sel += n_show;
+        else if (pad_state & BUTTON_LEFT) sel -= n_show;
+        else if (pad_state & BUTTON_A) break;
+        else if (pad_state & BUTTON_B) {
+            sel = n;
+            break;
+        }
+        if (sel < 0) sel = 0;
+        else if (sel >= n) sel = n-1;
+
+        int prev_scroll = scroll;
+        if (sel < scroll) scroll = sel;
+        else if (sel ==  n-1 && sel >= (scroll + n_show - 1)) scroll = sel - n_show + 1;
+        else if (sel >= (scroll + (n_show-1) - 1)) scroll = sel - (n_show-1) + 1;
+
+        if (scroll != prev_scroll) {
+            DrawRectangle(MAIN_SCREEN, x + font_width * 3, yopt, str_width + 4, (n_show * (line_height + 2)), COLOR_STD_BG);
         }
     }
-}
 
-u32 ShowFileScrollPrompt(int n, const DirEntry** options, bool hide_ext, const char *format, ...) {
-    u32 str_height;
-    u32 x, y, yopt;
-    const u32 item_width = SCREEN_WIDTH(MAIN_SCREEN) - 40;
-    int sel = 0, scroll = 0;
-    int n_show = min(n, 10);
-
-    char str[STRBUF_SIZE];
-    va_list va;
-    va_start(va, format);
-    vsnprintf(str, STRBUF_SIZE, format, va);
-    va_end(va);
-
-    if (n == 0) return 0;
-
-    str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
-    x = 20;
-    y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
-    yopt = y + GetDrawStringHeight(str) + 8;
-
-    ClearScreenF(true, false, COLOR_STD_BG);
-    DrawStringF(MAIN_SCREEN, x, y, COLOR_STD_FONT, COLOR_STD_BG, "%s", str);
-    DrawStringF(MAIN_SCREEN, x, yopt + (n_show * (line_height + 2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
-
-    while (true) {
-        for (int i = scroll; i < scroll + n_show; i++) {
-            char fname[256];
-            strncpy(fname, options[i]->name, sizeof(fname) - 1);
-            fname[sizeof(fname) - 1] = '\0';
-
-            if (hide_ext) {
-                char* dot = strrchr(fname, '.');
-                if (dot) *dot = '\0';
-            }
-
-            char display_str[256];
-            ResizeString(display_str, fname, item_width / font_width - 3, 0, false);
-
-            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height + 2) * (i - scroll)),
-                        (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG,
-                        "%2.2s %s", (sel == i) ? "->" : "", display_str);
-        }
-
-        u32 bar_x = x + item_width + 2;
-        const u32 flist_height = (n_show * (line_height + 2));
-        const u32 bar_width = 2;
-        if (n > n_show) {
-            const u32 bar_height_min = 32;
-            u32 bar_height = (n_show * flist_height) / n;
-            if (bar_height < bar_height_min) bar_height = bar_height_min;
-            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show);
-            DrawRectangle(MAIN_SCREEN, bar_x, yopt + bar_y, bar_width, bar_height, COLOR_LIGHTGREY);
-        }
-
-        u32 pad_state = InputWait(0);
-        if (pad_state & BUTTON_A) {
-            ClearScreenF(true, false, COLOR_STD_BG);
-            return sel + 1;
-        } else if (pad_state & BUTTON_B) {
-            ClearScreenF(true, false, COLOR_STD_BG);
-            return 0;
-        } else if (pad_state & BUTTON_UP) {
-            if (sel > 0) sel--;
-            else sel = n - 1;
-
-            if (sel < scroll) scroll = sel;
-            else if (sel >= scroll + n_show) scroll = (n > n_show) ? (n - n_show) : 0;
-        } else if (pad_state & BUTTON_DOWN) {
-            if (sel < n - 1) sel++;
-            else sel = 0;
-
-            if (sel >= scroll + n_show) scroll = sel - n_show + 1;
-            else if (sel < scroll) scroll = sel;
-        }
-    }
-}
     ClearScreenF(true, false, COLOR_STD_BG);
 
     return (sel >= n) ? 0 : sel + 1;
@@ -1317,7 +1263,7 @@ bool ShowInputPrompt(char* inputstr, u32 max_size, u32 resize, const char* alpha
 }
 
 bool ShowStringPrompt(char* inputstr, u32 max_size, const char *format, ...) {
-    const char* alphabet = " aAbBcCdDeEAfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ(){}[]'`^,~*?!@#$%&0123456789=+-_.";
+    const char* alphabet = " aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ(){}[]'`^,~*?!@#$%&0123456789=+-_.";
     bool ret = false;
     va_list va;
 
