@@ -903,7 +903,7 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             ResizeString(more_str, temp_str, str_width / font_width, 8, false);
             DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height+2)*(n_show-1), COLOR_LIGHTGREY, COLOR_STD_BG);
         }
-        // show scroll bar
+// show scroll bar
         u32 bar_x = x + str_width + 2;
         const u32 flist_height = (n_show * (line_height + 2));
         const u32 bar_width = 2;
@@ -911,33 +911,42 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             const u32 bar_height_min = 32;
             u32 bar_height = (n_show * flist_height) / n;
             if (bar_height < bar_height_min) bar_height = bar_height_min;
-            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show) + yopt;
-
-            DrawRectangle(MAIN_SCREEN, bar_x, bar_y, bar_width, bar_height, COLOR_SIDE_BAR);
+            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show);
+            DrawRectangle(MAIN_SCREEN, bar_x, yopt + bar_y, bar_width, bar_height, COLOR_LIGHTGREY);
         }
 
         u32 pad_state = InputWait(0);
-        if (pad_state & BUTTON_DOWN) sel = (sel+1) % n;
-        else if (pad_state & BUTTON_UP) sel = (sel+n-1) % n;
-        else if (pad_state & BUTTON_RIGHT) sel += n_show;
-        else if (pad_state & BUTTON_LEFT) sel -= n_show;
-        else if (pad_state & BUTTON_A) break;
-        else if (pad_state & BUTTON_B) {
-            sel = n;
-            break;
-        }
-        if (sel < 0) sel = 0;
-        else if (sel >= n) sel = n-1;
-
-        int prev_scroll = scroll;
-        if (sel < scroll) scroll = sel;
-        else if (sel ==  n-1 && sel >= (scroll + n_show - 1)) scroll = sel - n_show + 1;
-        else if (sel >= (scroll + (n_show-1) - 1)) scroll = sel - (n_show-1) + 1;
-
-        if (scroll != prev_scroll) {
-            DrawRectangle(MAIN_SCREEN, x + font_width * 3, yopt, str_width + 4, (n_show * (line_height + 2)), COLOR_STD_BG);
+        if (pad_state & BUTTON_A) {
+            ClearScreenF(true, false, COLOR_STD_BG);
+            return sel + 1;
+        } else if (pad_state & BUTTON_B) {
+            ClearScreenF(true, false, COLOR_STD_BG);
+            return 0;
+        } else if (pad_state & BUTTON_UP) {
+            if (sel > 0) {
+                sel--;
+            } else {
+                sel = n - 1; // Wrap around to the bottom
+            }
+            if (sel < scroll) {
+                scroll = sel;
+            } else if (sel >= scroll + n_show) {
+                scroll = (n > n_show) ? (n - n_show) : 0;
+            }
+        } else if (pad_state & BUTTON_DOWN) {
+            if (sel < n - 1) {
+                sel++;
+            } else {
+                sel = 0; // Wrap around to the top
+            }
+            if (sel >= scroll + n_show) {
+                scroll = sel - n_show + 1;
+            } else if (sel < scroll) {
+                scroll = sel;
+            }
         }
     }
+}
 
     ClearScreenF(true, false, COLOR_STD_BG);
 
