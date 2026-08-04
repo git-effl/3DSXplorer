@@ -821,7 +821,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     while (true) {
         for (u32 n = 0; n < seqlen; n++) {
             DrawStringF(MAIN_SCREEN, x + (n*4*FONT_WIDTH_EXT), y + str_height - 28 + line_height,
-                (lvl > n) ? color_on : color_off, color_bg, "<%s>", seqsymbols[n]);
+                (lvl > n) ? color_on : color_off, color_bg, "<%-5s>", seqsymbols[n]);
         }
         if (lvl == seqlen)
             break;
