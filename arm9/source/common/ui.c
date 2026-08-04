@@ -876,7 +876,6 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
     va_end(va);
 
     if (n == 0) return 0; // check for low number of options
-    // else if (n == 1) return ShowPrompt(true, "%s\n%s?", str, options[0]) ? 1 : 0;
 
     str_width = GetDrawStringWidth(str);
     str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
@@ -890,6 +889,7 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
     ClearScreenF(true, false, COLOR_STD_BG);
     DrawStringF(MAIN_SCREEN, x, y, COLOR_STD_FONT, COLOR_STD_BG, "%s", str);
     DrawStringF(MAIN_SCREEN, x, yopt + (n_show*(line_height+2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
+    
     while (true) {
         for (int i = scroll; i < scroll+n_show; i++) {
             DrawStringF(MAIN_SCREEN, x, yopt + ((line_height+2)*(i-scroll)), (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG, "%2.2s %s",
@@ -903,7 +903,8 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             ResizeString(more_str, temp_str, str_width / font_width, 8, false);
             DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height+2)*(n_show-1), COLOR_LIGHTGREY, COLOR_STD_BG);
         }
-// show scroll bar
+
+        // show scroll bar
         u32 bar_x = x + str_width + 2;
         const u32 flist_height = (n_show * (line_height + 2));
         const u32 bar_width = 2;
@@ -947,7 +948,6 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
         }
     }
 }
-
     ClearScreenF(true, false, COLOR_STD_BG);
 
     return (sel >= n) ? 0 : sel + 1;
