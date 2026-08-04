@@ -89,7 +89,6 @@ static const u16 cp437_escapes[0x20] = {
 
 #define PIXEL_OFFSET(x, y)  (((x) * SCREEN_HEIGHT) + (SCREEN_HEIGHT - (y) - 1))
 
-
 u16 GetFontIndex(u16 c, bool use_ascii_lut)
 {
     if (c < 0x20) return GetFontIndex(cp437_escapes[c], use_ascii_lut);
@@ -113,7 +112,6 @@ u16 GetFontIndex(u16 c, bool use_ascii_lut)
     return ascii_lut['?' - 0x20];
 }
 
-// gets a u32 codepoint from a UTF-8 string and moves the pointer to the next character
 u32 GetCharacter(const char** str)
 {
     u32 c;
@@ -133,7 +131,6 @@ u32 GetCharacter(const char** str)
         c |= (*(*str)++ & 0x3F) << 6;
         c |=  *(*str)++ & 0x3F;
     } else {
-        // invalid UTF-8, skip to next character
         (*str)++;
         c = '?';
     }
@@ -147,13 +144,9 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
     u32 pbm_w = 0;
     u32 pbm_h = 0;
 
-    // minimum size
     if (hdr_max_size < 7) return NULL;
-
-    // check header magic, then skip over
     if (strncmp(hdr, "P4\n", 3) != 0) return NULL;
 
-    // skip any comments
     u32 p = 3;
     while (hdr[p] == '#') {
         while (hdr[p++] != '\n') {
@@ -161,35 +154,30 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
         }
     }
 
-    // parse width
     while ((hdr[p] >= '0') && (hdr[p] <= '9')) {
         if (p >= hdr_max_size) return NULL;
         pbm_w *= 10;
         pbm_w += hdr[p++] - '0';
     }
 
-    // whitespace
     if ((hdr[p++] != ' ') || (p >= hdr_max_size))
         return NULL;
 
-    // parse height
     while ((hdr[p] >= '0') && (hdr[p] <= '9')) {
         if (p >= hdr_max_size) return NULL;
         pbm_h *= 10;
         pbm_h += hdr[p++] - '0';
     }
 
-    // line break
     if ((hdr[p++] != '\n') || (p >= hdr_max_size))
         return NULL;
 
-    // check sizes
-    if (pbm_w <= 8) { // 1x256 format
+    if (pbm_w <= 8) { 
         if ((pbm_w > FONT_MAX_WIDTH) || (pbm_h % 256) ||
             ((pbm_h / 256) > FONT_MAX_HEIGHT) ||
             (pbm_h != (pbm_size - p)))
             return NULL;
-    } else { // 16x16 format
+    } else { 
         if ((pbm_w % 16) || (pbm_h % 16) ||
             ((pbm_w / 16) > FONT_MAX_WIDTH) ||
             ((pbm_h / 16) > FONT_MAX_HEIGHT) ||
@@ -197,7 +185,6 @@ const u8* GetFontFromPbm(const void* pbm, const u32 pbm_size, u32* w, u32* h) {
             return NULL;
     }
 
-    // all good
     if (w) *w = pbm_w;
     if (h) *h = pbm_h;
     return (u8*) pbm + p;
@@ -208,12 +195,9 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     const RiffChunkHeader* riff_header;
     const RiffChunkHeader* chunk_header;
 
-    // check header magic and load size
     if (!ptr) return NULL;
     riff_header = ptr;
     if (memcmp(riff_header->chunk_id, "RIFF", 4) != 0) return NULL;
-
-    // ensure enough space is allocated
     if (riff_header->size > riff_size) return NULL;
 
     ptr += sizeof(RiffChunkHeader);
@@ -221,15 +205,12 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     while ((u32)(ptr - riff) < riff_header->size + sizeof(RiffChunkHeader)) {
         chunk_header = ptr;
 
-        // check for and load META section
         if (memcmp(chunk_header->chunk_id, "META", 4) == 0) {
-
             if (chunk_header->size != 4) return NULL;
 
             const FontMeta *meta = ptr + sizeof(RiffChunkHeader);
             if (meta->width > FONT_MAX_WIDTH || meta->height > FONT_MAX_HEIGHT) return NULL;
 
-            // all good
             if (w) *w = meta->width;
             if (h) *h = meta->height;
             if (count) *count = meta->count;
@@ -242,8 +223,6 @@ const u8* GetFontFromRiff(const void* riff, const u32 riff_size, u32* w, u32* h,
     return NULL;
 }
 
-// sets the font from a given RIFF or PBM
-// if no font is given, the font is fetched from the default VRAM0 location
 bool SetFont(const void* font, u32 font_size) {
     u32 w, h;
     u16 count;
@@ -258,7 +237,7 @@ bool SetFont(const void* font, u32 font_size) {
     if (!font)
         return false;
 
-    if ((ptr = GetFontFromRiff(font, font_size, &w, &h, &count))) { // RIFF font
+    if ((ptr = GetFontFromRiff(font, font_size, &w, &h, &count))) { 
         font_width = w;
         font_height = h;
         font_count = count;
@@ -266,22 +245,21 @@ bool SetFont(const void* font, u32 font_size) {
         const RiffChunkHeader* riff_header;
         const RiffChunkHeader* chunk_header;
 
-        // load total size
         riff_header = font;
 
         while (((u32)ptr - (u32)font) < riff_header->size + sizeof(RiffChunkHeader)) {
             chunk_header = (const void *)ptr;
 
-            if (memcmp(chunk_header->chunk_id, "CDAT", 4) == 0) { // character data
+            if (memcmp(chunk_header->chunk_id, "CDAT", 4) == 0) { 
                 if (font_bin) free(font_bin);
                 font_bin = malloc(font_height * font_count);
-                if (!font_bin) return NULL;
+                if (!font_bin) return false;
 
                 memcpy(font_bin, ptr + sizeof(RiffChunkHeader), font_height * font_count);
-            } else if (memcmp(chunk_header->chunk_id, "CMAP", 4) == 0) { // character map
+            } else if (memcmp(chunk_header->chunk_id, "CMAP", 4) == 0) { 
                 if (font_map) free(font_map);
                 font_map = malloc(sizeof(u16) * font_count);
-                if (!font_map) return NULL;
+                if (!font_map) return false;
 
                 memcpy(font_map, ptr + sizeof(RiffChunkHeader), sizeof(u16) * font_count);
             }
@@ -297,7 +275,7 @@ bool SetFont(const void* font, u32 font_size) {
 
             if (font_bin) free(font_bin);
             font_bin = malloc(font_height * font_count);
-            if (!font_bin) return NULL;
+            if (!font_bin) return false;
 
             for (u32 cy = 0; cy < 16; cy++) {
                 for (u32 row = 0; row < font_height; row++) {
@@ -319,15 +297,13 @@ bool SetFont(const void* font, u32 font_size) {
 
         if (font_map) free(font_map);
         font_map = malloc(sizeof(u16) * font_count);
-        if (!font_map) return NULL;
+        if (!font_map) return false;
 
         memcpy(font_map, cp437_sorted_map, sizeof(cp437_sorted_map));
     } else {
         return false;
     }
 
-
-    // set up ASCII lookup table
     ascii_lut['?' - 0x20] = GetFontIndex('?', false);
     for (int i = 0; i < 0x60; i++) {
         ascii_lut[i] = GetFontIndex(i + 0x20, false);
@@ -377,11 +353,9 @@ void DrawRectangle(u16 *screen, int x, int y, u32 width, u32 height, u32 color)
 
 void DrawBitmap(u16 *screen, int x, int y, u32 w, u32 h, const u16* bitmap)
 {
-    // on negative values: center the bitmap
     if (x < 0) x = (SCREEN_WIDTH(screen) - w) >> 1;
     if (y < 0) y = (SCREEN_HEIGHT - h) >> 1;
 
-    // bug out on too big bitmaps / too large dimensions
     if ((x < 0) || (y < 0) || (w > SCREEN_WIDTH(screen)) || (h > SCREEN_HEIGHT))
         return;
 
@@ -399,19 +373,16 @@ void DrawQrCode(u16 *screen, const u8* qrcode)
     u32 size_qr_s = size_qr;
     u32 size_canvas = size_qr + 8;
 
-    // handle scaling
     u32 scale = 1;
     for (; size_canvas * (scale+1) < SCREEN_HEIGHT; scale++);
     size_qr_s *= scale;
     size_canvas *= scale;
 
-    // clear screen, draw the canvas
     u32 x_canvas = (SCREEN_WIDTH(screen) - size_canvas) / 2;
     u32 y_canvas = (SCREEN_HEIGHT - size_canvas) / 2;
     ClearScreen(screen, COLOR_STD_BG);
     DrawRectangle(screen, x_canvas, y_canvas, size_canvas, size_canvas, COLOR_WHITE);
 
-    // draw the QR code
     u32 x_qr = (SCREEN_WIDTH(screen) - size_qr_s) / 2;
     u32 y_qr = (SCREEN_HEIGHT - size_qr_s) / 2;
     int xDisplacement = x_qr * SCREEN_HEIGHT;
@@ -563,7 +534,6 @@ void MultiLineString(char* dest, const char* orig, int llen, int maxl) {
         *(ptr_d++) = '\n';
     }
 
-    // string too long?
     if (!maxl) *dest = '\0';
     else if (*ptr_o) {
         if (llen >= 3) snprintf(ptr_d - 4, 4, "...");
@@ -576,13 +546,13 @@ void WordWrapString(char* str, int llen) {
     char* last_spc = str - 1;
     if (!llen) llen = (SCREEN_WIDTH_MAIN / font_width);
     for (char* str_ptr = str;; str_ptr++) {
-        if (!*str_ptr || (*str_ptr == ' ')) { // on space or string_end
-            if (str_ptr - last_brk > llen) { // if maximum line lenght is exceeded
-                if (last_spc > last_brk) { // put a line_brk at the last space
+        if (!*str_ptr || (*str_ptr == ' ')) { 
+            if (str_ptr - last_brk > llen) { 
+                if (last_spc > last_brk) { 
                     *last_spc = '\n';
                     last_brk = last_spc;
                     last_spc = str_ptr;
-                } else if (*str_ptr) { // if we have no applicable space
+                } else if (*str_ptr) { 
                     *str_ptr = '\n';
                     last_brk = str_ptr;
                 }
@@ -592,7 +562,6 @@ void WordWrapString(char* str, int llen) {
     }
 }
 
-// dest must be at least 4x the size of nlength to account for UTF-8
 void ResizeString(char* dest, const char* orig, int nlength, int tpos, bool align_right) {
     int olength = 0;
     for (int i = 0; i < 256 && orig[i]; i++) {
@@ -611,7 +580,6 @@ void ResizeString(char* dest, const char* orig, int nlength, int tpos, bool alig
     }
 }
 
-// dest must be at least 4x the size of nlength to account for UTF-8
 void TruncateString(char* dest, const char* orig, int nlength, int tpos) {
     int osize = strnlen(orig, 256), olength = 0;
     for (int i = 0; i < 256 && orig[i]; i++) {
@@ -639,7 +607,7 @@ void TruncateString(char* dest, const char* orig, int nlength, int tpos) {
     }
 }
 
-void FormatNumber(char* str, u64 number) { // str should be 32 byte in size
+void FormatNumber(char* str, u64 number) { 
     u64 mag1000 = 1;
     *str = '\0';
     for (; number / (mag1000 * 1000) > 0; mag1000 *= 1000);
@@ -649,7 +617,7 @@ void FormatNumber(char* str, u64 number) { // str should be 32 byte in size
     }
 }
 
-void FormatBytes(char* str, u64 bytes, bool useLocale) { // str should be 32 byte in size, just to be safe
+void FormatBytes(char* str, u64 bytes, bool useLocale) { 
     static const char* normalizedUnits[] = {" Byte", " kB", " MB", " GB"};
     const char* localizedUnits[] = {STR_BYTE, STR_KB, STR_MB, STR_GB};
 
@@ -669,7 +637,7 @@ void FormatBytes(char* str, u64 bytes, bool useLocale) { // str should be 32 byt
 void ShowStringF(u16* screen, const char *format, ...)
 {
     ClearScreen(MAIN_SCREEN, COLOR_STD_BG);
-    if (format && *format) { // only if there is something in there
+    if (format && *format) { 
         char str[STRBUF_SIZE];
         va_list va;
         va_start(va, format);
@@ -683,7 +651,7 @@ void ShowStringF(u16* screen, const char *format, ...)
 void ShowString(const char *format, ...)
 {
     ClearScreenF(true, false, COLOR_STD_BG);
-    if (format && *format) { // only if there is something in there
+    if (format && *format) { 
         char str[STRBUF_SIZE];
         va_list va;
         va_start(va, format);
@@ -701,7 +669,7 @@ void ShowIconStringF(u16* screen, u16* icon, int w, int h, const char *format, .
     u32 x_str, y_str, x_bmp, y_bmp;
 
     ClearScreen(screen, COLOR_STD_BG);
-    if (!format || !*format) return; // only if there is something in there
+    if (!format || !*format) return; 
 
     char str[STRBUF_SIZE];
     va_list va;
@@ -789,7 +757,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     x = (str_width >= SCREEN_WIDTH_MAIN) ? 0 : (SCREEN_WIDTH_MAIN - str_width) / 2;
     y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
 
-    if (seqlvl >= 5) { // special handling
+    if (seqlvl >= 5) { 
         color_bg = seqcolors[seqlvl];
         color_font = COLOR_BLACK;
         color_off = COLOR_BLACK;
@@ -801,8 +769,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     #ifndef TIMER_UNLOCK
     DrawStringF(MAIN_SCREEN, x, y + str_height - 28, color_font, color_bg, "%s", STR_TO_PROCEED_ENTER_THIS);
 
-    // generate sequence
-    const char *dpad_symbols[] = { "→", "←", "↑", "↓" }; // R L U D
+    const char *dpad_symbols[] = { "→", "←", "↑", "↓" }; 
 
     u32 sequence[seqlen_max];
     const char *seqsymbols[seqlen_max];
@@ -816,7 +783,6 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     }
     sequence[seqlen-1] = BUTTON_A;
     seqsymbols[seqlen-1] = "A";
-
 
     while (true) {
         for (u32 n = 0; n < seqlen; n++) {
@@ -875,7 +841,7 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
     vsnprintf(str, STRBUF_SIZE, format, va);
     va_end(va);
 
-    if (n == 0) return 0; // check for low number of options
+    if (n == 0) return 0;
 
     str_width = GetDrawStringWidth(str);
     str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
@@ -896,7 +862,6 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
                 (sel == i) ? "->" : "", options[i]);
         }
 
-        // show [n more]
         if (n - n_show - scroll > 0) {
             char more_str[UTF_BUFFER_BYTESIZE(str_width / font_width)], temp_str[UTF_BUFFER_BYTESIZE(64)];
             snprintf(temp_str, sizeof(temp_str), STR_N_MORE, (n - (n_show-1) - scroll));
@@ -904,11 +869,10 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height+2)*(n_show-1), COLOR_LIGHTGREY, COLOR_STD_BG);
         }
 
-        // show scroll bar
         u32 bar_x = x + str_width + 2;
         const u32 flist_height = (n_show * (line_height + 2));
         const u32 bar_width = 2;
-        if (n > n_show) { // draw position bar at the right
+        if (n > n_show) { 
             const u32 bar_height_min = 32;
             u32 bar_height = (n_show * flist_height) / n;
             if (bar_height < bar_height_min) bar_height = bar_height_min;
@@ -927,7 +891,7 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             if (sel > 0) {
                 sel--;
             } else {
-                sel = n - 1; // Wrap around to the bottom
+                sel = n - 1; 
             }
             if (sel < scroll) {
                 scroll = sel;
@@ -938,7 +902,7 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             if (sel < n - 1) {
                 sel++;
             } else {
-                sel = 0; // Wrap around to the top
+                sel = 0; 
             }
             if (sel >= scroll + n_show) {
                 scroll = sel - n_show + 1;
