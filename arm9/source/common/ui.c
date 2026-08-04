@@ -769,7 +769,7 @@ bool ShowUnlockSequence(u32 seqlvl, const char *format, ...) {
     #ifndef TIMER_UNLOCK
     DrawStringF(MAIN_SCREEN, x, y + str_height - 28, color_font, color_bg, "%s", STR_TO_PROCEED_ENTER_THIS);
 
-    const char *dpad_symbols[] = { "→", "←", "↑", "↓" }; 
+    const char *dpad_symbols[] = { "RIGHT", "LEFT", "UP", "DOWN" }; 
 
     u32 sequence[seqlen_max];
     const char *seqsymbols[seqlen_max];
