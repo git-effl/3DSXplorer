@@ -846,27 +846,31 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
     str_width = GetDrawStringWidth(str);
     str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
     if (str_width < 24 * font_width) str_width = 24 * font_width;
-    for (int i = 0; i < n; i++) if (str_width < GetDrawStringWidth(options[i]) + (3 * font_width))
-        str_width = GetDrawStringWidth(options[i]) + (3 * font_width);
+    for (int i = 0; i < n; i++) {
+        if (str_width < GetDrawStringWidth(options[i]) + (3 * font_width))
+            str_width = GetDrawStringWidth(options[i]) + (3 * font_width);
+    }
     x = (str_width >= SCREEN_WIDTH_MAIN) ? 0 : (SCREEN_WIDTH_MAIN - str_width) / 2;
     y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
     yopt = y + GetDrawStringHeight(str) + 8;
 
     ClearScreenF(true, false, COLOR_STD_BG);
     DrawStringF(MAIN_SCREEN, x, y, COLOR_STD_FONT, COLOR_STD_BG, "%s", str);
-    DrawStringF(MAIN_SCREEN, x, yopt + (n_show*(line_height+2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
+    DrawStringF(MAIN_SCREEN, x, yopt + (n_show * (line_height + 2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
     
     while (true) {
-        for (int i = scroll; i < scroll+n_show; i++) {
-            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height+2)*(i-scroll)), (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG, "%2.2s %s",
-                (sel == i) ? "->" : "", options[i]);
+        for (int i = scroll; i < scroll + n_show; i++) {
+            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height + 2) * (i - scroll)), 
+                        (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG, 
+                        "%2.2s %s", (sel == i) ? "->" : "", options[i]);
         }
 
         if (n - n_show - scroll > 0) {
-            char more_str[UTF_BUFFER_BYTESIZE(str_width / font_width)], temp_str[UTF_BUFFER_BYTESIZE(64)];
-            snprintf(temp_str, sizeof(temp_str), STR_N_MORE, (n - (n_show-1) - scroll));
+            char more_str[UTF_BUFFER_BYTESIZE(str_width / font_width)];
+            char temp_str[UTF_BUFFER_BYTESIZE(64)];
+            snprintf(temp_str, sizeof(temp_str), STR_N_MORE, (n - (n_show - 1) - scroll));
             ResizeString(more_str, temp_str, str_width / font_width, 8, false);
-            DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height+2)*(n_show-1), COLOR_LIGHTGREY, COLOR_STD_BG);
+            DrawString(MAIN_SCREEN, more_str, x, yopt + (line_height + 2) * (n_show - 1), COLOR_LIGHTGREY, COLOR_STD_BG);
         }
 
         u32 bar_x = x + str_width + 2;
@@ -909,6 +913,83 @@ u32 ShowSelectPrompt(int n, const char** options, const char *format, ...) {
             } else if (sel < scroll) {
                 scroll = sel;
             }
+        }
+    }
+}
+
+u32 ShowFileScrollPrompt(int n, const DirEntry** options, bool hide_ext, const char *format, ...) {
+    u32 str_height;
+    u32 x, y, yopt;
+    const u32 item_width = SCREEN_WIDTH(MAIN_SCREEN) - 40;
+    int sel = 0, scroll = 0;
+    int n_show = min(n, 10);
+
+    char str[STRBUF_SIZE];
+    va_list va;
+    va_start(va, format);
+    vsnprintf(str, STRBUF_SIZE, format, va);
+    va_end(va);
+
+    if (n == 0) return 0;
+
+    str_height = GetDrawStringHeight(str) + (n_show * (line_height + 2)) + (3 * line_height);
+    x = 20;
+    y = (str_height >= SCREEN_HEIGHT) ? 0 : (SCREEN_HEIGHT - str_height) / 2;
+    yopt = y + GetDrawStringHeight(str) + 8;
+
+    ClearScreenF(true, false, COLOR_STD_BG);
+    DrawStringF(MAIN_SCREEN, x, y, COLOR_STD_FONT, COLOR_STD_BG, "%s", str);
+    DrawStringF(MAIN_SCREEN, x, yopt + (n_show * (line_height + 2)) + line_height, COLOR_STD_FONT, COLOR_STD_BG, "%s", STR_A_SELECT_B_CANCEL);
+
+    while (true) {
+        for (int i = scroll; i < scroll + n_show; i++) {
+            char fname[256];
+            strncpy(fname, options[i]->name, sizeof(fname) - 1);
+            fname[sizeof(fname) - 1] = '\0';
+
+            if (hide_ext) {
+                char* dot = strrchr(fname, '.');
+                if (dot) *dot = '\0';
+            }
+
+            char display_str[256];
+            ResizeString(display_str, fname, item_width / font_width - 3, 0, false);
+
+            DrawStringF(MAIN_SCREEN, x, yopt + ((line_height + 2) * (i - scroll)),
+                        (sel == i) ? COLOR_STD_FONT : COLOR_LIGHTGREY, COLOR_STD_BG,
+                        "%2.2s %s", (sel == i) ? "->" : "", display_str);
+        }
+
+        u32 bar_x = x + item_width + 2;
+        const u32 flist_height = (n_show * (line_height + 2));
+        const u32 bar_width = 2;
+        if (n > n_show) {
+            const u32 bar_height_min = 32;
+            u32 bar_height = (n_show * flist_height) / n;
+            if (bar_height < bar_height_min) bar_height = bar_height_min;
+            const u32 bar_y = ((u64) scroll * (flist_height - bar_height)) / (n - n_show);
+            DrawRectangle(MAIN_SCREEN, bar_x, yopt + bar_y, bar_width, bar_height, COLOR_LIGHTGREY);
+        }
+
+        u32 pad_state = InputWait(0);
+        if (pad_state & BUTTON_A) {
+            ClearScreenF(true, false, COLOR_STD_BG);
+            return sel + 1;
+        } else if (pad_state & BUTTON_B) {
+            ClearScreenF(true, false, COLOR_STD_BG);
+            return 0;
+        } else if (pad_state & BUTTON_UP) {
+            if (sel > 0) sel--;
+            else sel = n - 1;
+
+            if (sel < scroll) scroll = sel;
+            else if (sel >= scroll + n_show) scroll = (n > n_show) ? (n - n_show) : 0;
+        } else if (pad_state & BUTTON_DOWN) {
+            if (sel < n - 1) sel++;
+            else sel = 0;
+
+            if (sel >= scroll + n_show) scroll = sel - n_show + 1;
+            else if (sel < scroll) scroll = sel;
         }
     }
 }
